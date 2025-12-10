@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { verifyToken } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 const Order = require('../models/Order');
 const Payment = require('../models/Payment');
 
@@ -9,7 +9,7 @@ const Payment = require('../models/Payment');
  * Create payment intent
  * POST /api/payment/create-intent
  */
-router.post('/create-intent', verifyToken, async (req, res) => {
+router.post('/create-intent', verifyFirebaseToken, async (req, res) => {
   try {
     const { amount, orderId } = req.body;
     
@@ -49,7 +49,7 @@ router.post('/create-intent', verifyToken, async (req, res) => {
  * Confirm payment and update order
  * POST /api/payment/confirm
  */
-router.post('/confirm', verifyToken, async (req, res) => {
+router.post('/confirm', verifyFirebaseToken, async (req, res) => {
   try {
     const { paymentIntentId, orderId } = req.body;
     
@@ -108,7 +108,7 @@ router.post('/confirm', verifyToken, async (req, res) => {
  * Get payment history for user
  * GET /api/payment/history
  */
-router.get('/history', verifyToken, async (req, res) => {
+router.get('/history', verifyFirebaseToken, async (req, res) => {
   try {
     const payments = await Payment.find({ user: req.user.id })
       .populate('order')
@@ -131,7 +131,7 @@ router.get('/history', verifyToken, async (req, res) => {
  * Get single payment/invoice
  * GET /api/payment/:id
  */
-router.get('/:id', verifyToken, async (req, res) => {
+router.get('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id)
       .populate('user')

@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { verifyToken, isAdmin } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { isAdmin } = require('../middleware/auth');
 
 // @route   GET /api/users
 // @desc    Get all users
 // @access  Private (Admin only)
-router.get('/', verifyToken, isAdmin, async (req, res) => {
+router.get('/', verifyFirebaseToken, isAdmin, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
     res.json({ success: true, users });
@@ -18,7 +19,7 @@ router.get('/', verifyToken, isAdmin, async (req, res) => {
 // @route   GET /api/users/:id
 // @desc    Get user profile
 // @access  Private
-router.get('/:id', verifyToken, async (req, res) => {
+router.get('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     // Users can see their own profile, admins can see any profile
     if (req.user._id.toString() !== req.params.id && req.user.role !== 'admin') {
@@ -40,7 +41,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 // @route   PATCH /api/users/:id
 // @desc    Update user profile
 // @access  Private
-router.patch('/:id', verifyToken, async (req, res) => {
+router.patch('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     // Users can update their own profile, admins can update any profile
     if (req.user._id.toString() !== req.params.id && req.user.role !== 'admin') {
@@ -76,7 +77,7 @@ router.patch('/:id', verifyToken, async (req, res) => {
 // @route   PATCH /api/users/:id/role
 // @desc    Update user role
 // @access  Private (Admin only)
-router.patch('/:id/role', verifyToken, isAdmin, async (req, res) => {
+router.patch('/:id/role', verifyFirebaseToken, isAdmin, async (req, res) => {
   try {
     const { role } = req.body;
     

@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const Wishlist = require('../models/Wishlist');
-const { verifyToken } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 
 // @route   POST /api/wishlist
 // @desc    Add book to wishlist
 // @access  Private
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyFirebaseToken, async (req, res) => {
   try {
     const { bookId } = req.body;
     
@@ -44,7 +44,7 @@ router.post('/', verifyToken, async (req, res) => {
 // @route   GET /api/wishlist/:userId
 // @desc    Get user's wishlist
 // @access  Private
-router.get('/:userId', verifyToken, async (req, res) => {
+router.get('/:userId', verifyFirebaseToken, async (req, res) => {
   try {
     // Ensure user can only see their own wishlist
     if (req.user._id.toString() !== req.params.userId) {
@@ -64,7 +64,7 @@ router.get('/:userId', verifyToken, async (req, res) => {
 // @route   DELETE /api/wishlist/:id
 // @desc    Remove from wishlist
 // @access  Private
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const wishlistItem = await Wishlist.findById(req.params.id);
     

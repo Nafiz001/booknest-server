@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Book = require('../models/Book');
-const { verifyToken, isLibrarian, isAdmin } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { isLibrarian, isAdmin } = require('../middleware/auth');
 const { uploadToImgBB } = require('../utils/imageUpload');
 
 // @route   GET /api/books
@@ -64,7 +65,7 @@ router.get('/:id', async (req, res) => {
 // @route   POST /api/books
 // @desc    Add new book
 // @access  Private (Librarian/Admin)
-router.post('/', verifyToken, isLibrarian, async (req, res) => {
+router.post('/', verifyFirebaseToken, isLibrarian, async (req, res) => {
   try {
     const bookData = { ...req.body };
     
@@ -92,7 +93,7 @@ router.post('/', verifyToken, isLibrarian, async (req, res) => {
 // @route   PATCH /api/books/:id
 // @desc    Update book
 // @access  Private (Librarian/Admin - own books only for librarian)
-router.patch('/:id', verifyToken, isLibrarian, async (req, res) => {
+router.patch('/:id', verifyFirebaseToken, isLibrarian, async (req, res) => {
   try {
     const book = await Book.findById(req.params.id);
     
@@ -124,7 +125,7 @@ router.patch('/:id', verifyToken, isLibrarian, async (req, res) => {
 // @route   DELETE /api/books/:id
 // @desc    Delete book
 // @access  Private (Admin only)
-router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
+router.delete('/:id', verifyFirebaseToken, isAdmin, async (req, res) => {
   try {
     const book = await Book.findByIdAndDelete(req.params.id);
     
@@ -144,7 +145,7 @@ router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
 // @route   GET /api/books/librarian/:librarianId
 // @desc    Get books by librarian
 // @access  Private
-router.get('/librarian/:librarianId', verifyToken, async (req, res) => {
+router.get('/librarian/:librarianId', verifyFirebaseToken, async (req, res) => {
   try {
     const books = await Book.find({ librarian: req.params.librarianId })
       .sort({ createdAt: -1 });
@@ -158,7 +159,7 @@ router.get('/librarian/:librarianId', verifyToken, async (req, res) => {
 // @route   PATCH /api/books/:id/status
 // @desc    Update book status (publish/unpublish)
 // @access  Private (Admin only)
-router.patch('/:id/status', verifyToken, isAdmin, async (req, res) => {
+router.patch('/:id/status', verifyFirebaseToken, isAdmin, async (req, res) => {
   try {
     const { status } = req.body;
     

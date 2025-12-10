@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { verifyToken } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 
 // Generate JWT Token
 const generateToken = (userId) => {
@@ -141,7 +141,7 @@ router.post('/login', async (req, res) => {
 // @route   POST /api/auth/logout
 // @desc    Logout user
 // @access  Private
-router.post('/logout', verifyToken, (req, res) => {
+router.post('/logout', verifyFirebaseToken, (req, res) => {
   res.clearCookie('token');
   res.json({ 
     success: true, 
@@ -152,7 +152,7 @@ router.post('/logout', verifyToken, (req, res) => {
 // @route   GET /api/auth/me
 // @desc    Get current user
 // @access  Private
-router.get('/me', verifyToken, (req, res) => {
+router.get('/me', verifyFirebaseToken, (req, res) => {
   res.json({
     success: true,
     user: {

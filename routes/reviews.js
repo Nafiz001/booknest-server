@@ -2,13 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Review = require('../models/Review');
 const Order = require('../models/Order');
-const { verifyToken } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 
 /**
  * Create a review
  * POST /api/reviews
  */
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyFirebaseToken, async (req, res) => {
   try {
     const { bookId, rating, comment } = req.body;
     
@@ -97,7 +97,7 @@ router.get('/book/:bookId', async (req, res) => {
  * Get user's reviews
  * GET /api/reviews/user/:userId
  */
-router.get('/user/:userId', verifyToken, async (req, res) => {
+router.get('/user/:userId', verifyFirebaseToken, async (req, res) => {
   try {
     const reviews = await Review.find({ user: req.params.userId })
       .populate('book', 'title image author')
@@ -119,7 +119,7 @@ router.get('/user/:userId', verifyToken, async (req, res) => {
  * Update review
  * PATCH /api/reviews/:id
  */
-router.patch('/:id', verifyToken, async (req, res) => {
+router.patch('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const review = await Review.findById(req.params.id);
     
@@ -162,7 +162,7 @@ router.patch('/:id', verifyToken, async (req, res) => {
  * Delete review
  * DELETE /api/reviews/:id
  */
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const review = await Review.findById(req.params.id);
     
@@ -199,7 +199,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
  * Check if user can review a book
  * GET /api/reviews/can-review/:bookId
  */
-router.get('/can-review/:bookId', verifyToken, async (req, res) => {
+router.get('/can-review/:bookId', verifyFirebaseToken, async (req, res) => {
   try {
     // Check if user has ordered and received the book
     const hasOrdered = await Order.findOne({

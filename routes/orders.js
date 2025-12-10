@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const { verifyToken, isLibrarian } = require('../middleware/auth');
+const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { isLibrarian } = require('../middleware/auth');
 
 // @route   POST /api/orders
 // @desc    Create new order
 // @access  Private
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyFirebaseToken, async (req, res) => {
   try {
     const orderData = {
       ...req.body,
@@ -31,7 +32,7 @@ router.post('/', verifyToken, async (req, res) => {
 // @route   GET /api/orders/user/:userId
 // @desc    Get user's orders
 // @access  Private
-router.get('/user/:userId', verifyToken, async (req, res) => {
+router.get('/user/:userId', verifyFirebaseToken, async (req, res) => {
   try {
     // Ensure user can only see their own orders
     if (req.user._id.toString() !== req.params.userId && req.user.role !== 'admin') {
@@ -54,7 +55,7 @@ router.get('/user/:userId', verifyToken, async (req, res) => {
 // @route   GET /api/orders/librarian/:librarianId
 // @desc    Get orders for librarian's books
 // @access  Private (Librarian/Admin)
-router.get('/librarian/:librarianId', verifyToken, isLibrarian, async (req, res) => {
+router.get('/librarian/:librarianId', verifyFirebaseToken, isLibrarian, async (req, res) => {
   try {
     const Book = require('../models/Book');
     
@@ -77,7 +78,7 @@ router.get('/librarian/:librarianId', verifyToken, isLibrarian, async (req, res)
 // @route   PATCH /api/orders/:id/status
 // @desc    Update order status
 // @access  Private (Librarian/Admin)
-router.patch('/:id/status', verifyToken, isLibrarian, async (req, res) => {
+router.patch('/:id/status', verifyFirebaseToken, isLibrarian, async (req, res) => {
   try {
     const { status } = req.body;
     
@@ -104,7 +105,7 @@ router.patch('/:id/status', verifyToken, isLibrarian, async (req, res) => {
 // @route   DELETE /api/orders/:id
 // @desc    Cancel order
 // @access  Private (User can cancel their own pending orders)
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     
@@ -142,7 +143,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 // @route   GET /api/orders/:id
 // @desc    Get single order
 // @access  Private
-router.get('/:id', verifyToken, async (req, res) => {
+router.get('/:id', verifyFirebaseToken, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('book')

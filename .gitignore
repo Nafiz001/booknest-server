@@ -8,3 +8,6 @@ yarn-debug.log*
 yarn-error.log*
 dist/
 build/
+
+# Firebase Service Account Key (NEVER commit this!)
+config/serviceAccountKey.json

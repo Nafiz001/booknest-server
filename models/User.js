@@ -16,9 +16,7 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: function() {
-      return this.authProvider === 'email';
-    },
+    required: false, // Not required for Google auth
     minlength: [6, 'Password must be at least 6 characters']
   },
   photoURL: {

@@ -19,7 +19,11 @@ app.use(helmet({
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    process.env.CLIENT_URL
+  ].filter(Boolean),
   credentials: true
 }));
 
@@ -40,6 +44,7 @@ app.use('/api/books', require('./routes/books'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/wishlist', require('./routes/wishlist'));
+app.use('/api/payment', require('./routes/payment'));
 
 // Health check with system information
 app.get('/health', async (req, res) => {

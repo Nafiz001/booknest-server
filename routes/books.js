@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Book = require('../models/Book');
 const { verifyToken, isLibrarian, isAdmin } = require('../middleware/auth');
+const { uploadToImgBB } = require('../utils/imageUpload');
 
 // @route   GET /api/books
 // @desc    Get all published books
@@ -65,10 +66,15 @@ router.get('/:id', async (req, res) => {
 // @access  Private (Librarian/Admin)
 router.post('/', verifyToken, isLibrarian, async (req, res) => {
   try {
-    const bookData = {
-      ...req.body,
-      librarian: req.user._id
-    };
+    const bookData = { ...req.body };
+    
+    // Upload image to ImgBB if provided
+    if (bookData.image && bookData.image.startsWith('data:image')) {
+      const imageUrl = await uploadToImgBB(bookData.image);
+      bookData.image = imageUrl;
+    }
+    
+    bookData.librarian = req.user._id;
     
     const book = new Book(bookData);
     await book.save();

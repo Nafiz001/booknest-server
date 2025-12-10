@@ -71,41 +71,30 @@ router.post('/register', async (req, res) => {
 });
 
 // @route   POST /api/auth/login
-// @desc    Login user
+// @desc    Login user (Firebase already authenticated, just sync with backend)
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, authProvider, uid } = req.body;
+    const { email, authProvider, uid } = req.body;
 
     // Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Invalid credentials' 
+        message: 'User not found. Please register first.' 
       });
     }
 
-    // For Google auth
-    if (authProvider === 'google') {
-      if (user.uid !== uid) {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'Invalid Google authentication' 
-        });
-      }
-    } else {
-      // For email auth
-      const isPasswordValid = await user.comparePassword(password);
-      if (!isPasswordValid) {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'Invalid credentials' 
-        });
-      }
+    // For Google auth, verify UID matches
+    if (authProvider === 'google' && user.uid !== uid) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid Google authentication' 
+      });
     }
 
-    // No need to generate custom JWT - client uses Firebase ID tokens
+    // Firebase already validated the credentials, just return user data
     res.json({
       success: true,
       message: 'Login successful',

@@ -78,8 +78,25 @@ router.post('/login', async (req, res) => {
     const { email, authProvider, uid } = req.body;
 
     // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
+    let user = await User.findOne({ email });
+    
+    // If user doesn't exist (first time Google login), create them
+    if (!user && authProvider === 'google') {
+      // Get user info from request (client should send it)
+      const { name, photoURL } = req.body;
+      
+      user = new User({
+        name: name || email.split('@')[0],
+        email,
+        photoURL: photoURL || '',
+        authProvider: 'google',
+        uid,
+        role: 'user'
+      });
+      
+      await user.save();
+      console.log('✅ New Google user created:', email);
+    } else if (!user) {
       return res.status(401).json({ 
         success: false, 
         message: 'User not found. Please register first.' 

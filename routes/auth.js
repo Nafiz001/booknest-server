@@ -152,4 +152,91 @@ router.get('/me', verifyFirebaseToken, (req, res) => {
   });
 });
 
+// @route   POST /api/auth/user
+// @desc    Save or update user (simple upsert pattern like reference project)
+// @access  Public
+router.post('/user', async (req, res) => {
+  try {
+    const userData = req.body;
+    const email = userData.email;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email is required' 
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    console.log('User Already Exists---> ', !!existingUser);
+
+    if (existingUser) {
+      // Update last login
+      console.log('Updating user info......');
+      existingUser.lastLogin = new Date();
+      
+      // Update name and photo if provided
+      if (userData.name && userData.name !== existingUser.name) {
+        existingUser.name = userData.name;
+      }
+      if ((userData.image || userData.photoURL) && userData.image !== existingUser.photoURL) {
+        existingUser.photoURL = userData.image || userData.photoURL;
+      }
+      
+      await existingUser.save();
+      
+      return res.json({
+        success: true,
+        message: 'User updated',
+        user: {
+          id: existingUser._id,
+          name: existingUser.name,
+          email: existingUser.email,
+          photoURL: existingUser.photoURL,
+          role: existingUser.role
+        }
+      });
+    }
+
+    // Create new user
+    console.log('Saving new user info......');
+    
+    // Try to get uid from Firebase Auth to link accounts
+    let uid = userData.uid || null;
+    
+    const newUser = new User({
+      name: userData.name || email.split('@')[0],
+      email: email,
+      photoURL: userData.image || userData.photoURL || '',
+      role: 'user',
+      authProvider: 'google',
+      uid: uid, // Set uid to link with Firebase
+      createdAt: new Date(),
+      lastLogin: new Date()
+    });
+
+    await newUser.save();
+    
+    res.json({
+      success: true,
+      message: 'User created',
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        photoURL: newUser.photoURL,
+        role: newUser.role
+      }
+    });
+  } catch (error) {
+    console.error('Error in POST /user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

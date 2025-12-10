@@ -41,7 +41,29 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/wishlist', require('./routes/wishlist'));
 
-// Health check
+// Health check with system information
+app.get('/health', async (req, res) => {
+  const healthcheck = {
+    uptime: process.uptime(),
+    message: 'OK',
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'development',
+    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    memory: {
+      used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`,
+      total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)} MB`
+    }
+  };
+  
+  try {
+    res.status(200).json(healthcheck);
+  } catch (error) {
+    healthcheck.message = error;
+    res.status(503).json(healthcheck);
+  }
+});
+
+// Root route
 app.get('/', (req, res) => {
   res.json({ 
     success: true, 

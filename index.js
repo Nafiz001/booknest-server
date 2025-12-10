@@ -45,6 +45,7 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/wishlist', require('./routes/wishlist'));
 app.use('/api/payment', require('./routes/payment'));
+app.use('/api/reviews', require('./routes/reviews'));
 
 // Health check with system information
 app.get('/health', async (req, res) => {

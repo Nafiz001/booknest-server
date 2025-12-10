@@ -71,47 +71,36 @@ router.post('/register', async (req, res) => {
 });
 
 // @route   POST /api/auth/login
-// @desc    Login user (Firebase already authenticated, just sync with backend)
+// @desc    Save or update user (upsert pattern like reference project)
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    const { email, authProvider, uid } = req.body;
+    const { email, name, photoURL, authProvider, uid } = req.body;
 
-    // Find user
+    // Check if user exists
     let user = await User.findOne({ email });
-    
-    // If user doesn't exist (first time Google login), create them
-    if (!user && authProvider === 'google') {
-      // Get user info from request (client should send it)
-      const { name, photoURL } = req.body;
-      
+
+    if (user) {
+      // Update existing user's last login
+      user.lastLogin = new Date();
+      await user.save();
+      console.log('✅ User updated:', email);
+    } else {
+      // Create new user
       user = new User({
         name: name || email.split('@')[0],
         email,
         photoURL: photoURL || '',
-        authProvider: 'google',
-        uid,
+        authProvider: authProvider || 'email',
+        uid: uid || null,
         role: 'user'
       });
       
       await user.save();
-      console.log('✅ New Google user created:', email);
-    } else if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not found. Please register first.' 
-      });
+      console.log('✅ New user created:', email);
     }
 
-    // For Google auth, verify UID matches
-    if (authProvider === 'google' && user.uid !== uid) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid Google authentication' 
-      });
-    }
-
-    // Firebase already validated the credentials, just return user data
+    // Return user data
     res.json({
       success: true,
       message: 'Login successful',
@@ -125,10 +114,13 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     res.status(500).json({ 
       success: false, 
       message: 'Server error during login',
-      error: error.message 
+      error: error.message,
+      details: error.toString()
     });
   }
 });

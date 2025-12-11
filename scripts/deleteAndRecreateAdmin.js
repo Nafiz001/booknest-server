@@ -1,19 +1,22 @@
 require('dotenv').config();
-const mongoose = require('mongoose');
-const User = require('../models/User');
+const { MongoClient } = require('mongodb');
 const admin = require('../config/firebase-admin');
 
 const recreateAdmin = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
     console.log('✅ Connected to MongoDB');
 
-    const adminEmail = 'admin@booknest.com';
-    const adminPassword = 'Admin123!@#';
-    const adminName = 'Admin User';
+    const db = client.db('booknestDB');
+    const usersCollection = db.collection('users');
+
+    const adminEmail = 'nafiz@shopcircuit.com';
+    const adminPassword = 'Nafiz@123';
+    const adminName = 'Nafiz Ahmed';
 
     // Delete from MongoDB
-    await User.deleteOne({ email: adminEmail });
+    await usersCollection.deleteOne({ email: adminEmail });
     console.log('🗑️  Deleted admin from MongoDB');
 
     // Delete from Firebase
@@ -37,17 +40,15 @@ const recreateAdmin = async () => {
     console.log('✅ Created admin in Firebase');
 
     // Create in MongoDB
-    const mongoUser = new User({
+    await usersCollection.insertOne({
       name: adminName,
       email: adminEmail,
-      password: adminPassword,
       photoURL: 'https://i.ibb.co/9hMVP7p/admin-avatar.png',
-      authProvider: 'email',
       uid: firebaseUser.uid,
-      role: 'admin'
+      role: 'admin',
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString()
     });
-
-    await mongoUser.save();
     console.log('✅ Created admin in MongoDB');
 
     console.log('\n📋 Admin Credentials:');
@@ -55,7 +56,7 @@ const recreateAdmin = async () => {
     console.log('Password:', adminPassword);
     console.log('\n✅ Login on website now!');
     
-    mongoose.connection.close();
+    await client.close();
     process.exit(0);
   } catch (error) {
     console.error('❌ Error:', error.message);

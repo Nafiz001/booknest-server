@@ -3,36 +3,86 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const admin = require('./config/firebase-admin');
-
-const app = express();
+const admin = require('firebase-admin');
 const PORT = process.env.PORT || 5000;
 
+// Initialize Firebase Admin
+let firebaseInitialized = false;
+try {
+  const serviceKey = process.env.FB_SERVICE_KEY || process.env.FIREBASE_SERVICE_KEY_BASE64;
+  if (!serviceKey) {
+    throw new Error('No Firebase service key found in environment');
+  }
+  const decoded = Buffer.from(serviceKey, 'base64').toString('utf-8');
+  const serviceAccount = JSON.parse(decoded);
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  firebaseInitialized = true;
+  console.log('✅ Firebase Admin initialized');
+} catch (error) {
+  console.error('❌ Firebase Admin initialization failed:', error.message);
+  // Don't throw - let the app start but return errors on protected routes
+}
+
+const app = express();
+
 // Middleware
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    process.env.CLIENT_URL
-  ].filter(Boolean),
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'https://booknest-client-jet.vercel.app',
+      process.env.CLIENT_URL
+    ].filter(Boolean),
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
 app.use(express.json());
 
 // JWT middleware
 const verifyJWT = async (req, res, next) => {
-  const token = req?.headers?.authorization?.split(' ')[1];
-  if (!token) return res.status(401).send({ message: 'Unauthorized Access!' });
   try {
+    const token = req?.headers?.authorization?.split(' ')[1];
+    console.log('🔐 Token received:', token ? 'Yes' : 'No');
+    if (!token) {
+      return res.status(401).json({ message: 'Unauthorized Access!' });
+    }
+    
     const decoded = await admin.auth().verifyIdToken(token);
+    console.log('✅ Token verified for:', decoded.email);
     req.tokenEmail = decoded.email;
     req.tokenUid = decoded.uid;
     next();
   } catch (err) {
-    console.log(err);
-    return res.status(401).send({ message: 'Unauthorized Access!', err });
+    console.error('❌ Token verification error:', err.code || err.message);
+    return res.status(401).json({ 
+      message: 'Unauthorized Access!', 
+      error: err.message,
+      code: err.code 
+    });
   }
 };
+
+// Test endpoint to check Firebase Admin initialization
+app.get('/api/firebase-test', (req, res) => {
+  try {
+    const app = admin.app();
+    res.json({ 
+      success: true, 
+      message: 'Firebase Admin is initialized',
+      hasCredential: !!app.options.credential
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Firebase Admin not initialized',
+      error: error.message 
+    });
+  }
+});
 
 // MongoDB Client
 const client = new MongoClient(process.env.MONGODB_URI, {
@@ -185,6 +235,8 @@ async function run() {
       if (sort === 'newest') sortOption = { createdAt: -1 };
       else if (sort === 'oldest') sortOption = { createdAt: 1 };
       else if (sort === 'title') sortOption = { title: 1 };
+      else if (sort === 'price-asc') sortOption = { price: 1 };
+      else if (sort === 'price-desc') sortOption = { price: -1 };
 
       const books = await booksCollection.find(query).sort(sortOption).toArray();
       res.send({ success: true, books });
@@ -199,7 +251,15 @@ async function run() {
 
     // Add book (librarian only)
     app.post('/api/books', verifyJWT, verifyLIBRARIAN, async (req, res) => {
-      const bookData = { ...req.body, createdAt: new Date().toISOString() };
+      const user = await usersCollection.findOne({ uid: req.tokenUid });
+      const bookData = { 
+        ...req.body, 
+        librarianId: user._id.toString(),
+        librarianEmail: user.email,
+        librarianName: user.name,
+        published: req.body.published !== undefined ? req.body.published : true,
+        createdAt: new Date().toISOString() 
+      };
       const result = await booksCollection.insertOne(bookData);
       res.send({ success: true, result });
     });
@@ -216,7 +276,33 @@ async function run() {
     // Delete book (librarian/admin only)
     app.delete('/api/books/:id', verifyJWT, verifyLIBRARIAN, async (req, res) => {
       const result = await booksCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+      // Also delete all orders for this book
+      await ordersCollection.deleteMany({ bookId: req.params.id });
       res.send({ success: true, result });
+    });
+
+    // Admin: Get all books from all librarians
+    app.get('/api/admin/books', verifyJWT, verifyADMIN, async (req, res) => {
+      const books = await booksCollection.find().sort({ createdAt: -1 }).toArray();
+      res.send({ success: true, books });
+    });
+
+    // Admin: Toggle book publish status
+    app.patch('/api/admin/books/:id/publish', verifyJWT, verifyADMIN, async (req, res) => {
+      const { published } = req.body;
+      const result = await booksCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { published } }
+      );
+      res.send({ success: true, result });
+    });
+
+    // Librarian: Get books added by specific librarian
+    app.get('/api/books/librarian/:librarianId', verifyJWT, verifyLIBRARIAN, async (req, res) => {
+      const books = await booksCollection.find({ 
+        librarianId: req.params.librarianId 
+      }).sort({ createdAt: -1 }).toArray();
+      res.send({ success: true, books });
     });
 
     // ==================== ORDER ROUTES ====================
@@ -224,18 +310,28 @@ async function run() {
     // Create order
     app.post('/api/orders', verifyJWT, async (req, res) => {
       const orderData = { 
-        ...req.body, 
+        ...req.body,
+        userId: req.body.userId.toString(), // Ensure userId is string for consistent querying
         createdAt: new Date().toISOString(),
         status: 'pending'
       };
       const result = await ordersCollection.insertOne(orderData);
-      res.send({ success: true, result });
+      res.send({ success: true, result, orderId: result.insertedId });
     });
 
     // Get user orders
     app.get('/api/orders/user/:userId', verifyJWT, async (req, res) => {
       const orders = await ordersCollection.find({ userId: req.params.userId }).sort({ createdAt: -1 }).toArray();
       res.send({ success: true, orders });
+    });
+
+    // Check if user ordered a specific book
+    app.get('/api/orders/user/:userId/book/:bookId', verifyJWT, async (req, res) => {
+      const order = await ordersCollection.findOne({ 
+        userId: req.params.userId,
+        bookId: req.params.bookId
+      });
+      res.send({ success: true, hasOrdered: !!order });
     });
 
     // Get librarian orders
@@ -247,26 +343,85 @@ async function run() {
     // Update order status
     app.patch('/api/orders/:id/status', verifyJWT, async (req, res) => {
       const { status } = req.body;
-      const result = await ordersCollection.updateOne(
+      await ordersCollection.updateOne(
         { _id: new ObjectId(req.params.id) },
         { $set: { status, updatedAt: new Date().toISOString() } }
+      );
+      const order = await ordersCollection.findOne({ _id: new ObjectId(req.params.id) });
+      res.send({ success: true, order });
+    });
+
+    // Cancel order (change status to cancelled)
+    app.delete('/api/orders/:id', verifyJWT, async (req, res) => {
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { status: 'cancelled', updatedAt: new Date().toISOString() } }
       );
       res.send({ success: true, result });
     });
 
     // ==================== WISHLIST ROUTES ====================
     
-    // Get user wishlist
+    // Get user wishlist with book details
     app.get('/api/wishlist/:userId', verifyJWT, async (req, res) => {
-      const wishlist = await wishlistCollection.find({ userId: req.params.userId }).toArray();
-      res.send({ success: true, wishlist });
+      try {
+        const wishlistItems = await wishlistCollection.find({ userId: req.params.userId }).toArray();
+        
+        // Populate book details for each wishlist item
+        const wishlistWithBooks = await Promise.all(
+          wishlistItems.map(async (item) => {
+            const book = await booksCollection.findOne({ _id: new ObjectId(item.bookId) });
+            return {
+              ...item,
+              book: book || null
+            };
+          })
+        );
+        
+        // Filter out items where book no longer exists
+        const validWishlist = wishlistWithBooks.filter(item => item.book !== null);
+        
+        res.send({ success: true, wishlist: validWishlist });
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Failed to fetch wishlist' });
+      }
     });
 
     // Add to wishlist
     app.post('/api/wishlist', verifyJWT, async (req, res) => {
-      const wishlistData = { ...req.body, createdAt: new Date().toISOString() };
-      const result = await wishlistCollection.insertOne(wishlistData);
-      res.send({ success: true, result });
+      try {
+        const { bookId } = req.body;
+        const userId = req.tokenUid;
+        
+        // Find user to get their ID
+        const user = await usersCollection.findOne({ uid: userId });
+        if (!user) return res.status(404).send({ success: false, message: 'User not found' });
+        
+        // Check if book exists
+        const book = await booksCollection.findOne({ _id: new ObjectId(bookId) });
+        if (!book) return res.status(404).send({ success: false, message: 'Book not found' });
+        
+        // Check if already in wishlist
+        const existing = await wishlistCollection.findOne({ 
+          userId: user._id.toString(), 
+          bookId: bookId 
+        });
+        
+        if (existing) {
+          return res.status(409).send({ success: false, message: 'Book already in wishlist' });
+        }
+        
+        const wishlistData = { 
+          userId: user._id.toString(),
+          bookId: bookId,
+          createdAt: new Date().toISOString() 
+        };
+        
+        const result = await wishlistCollection.insertOne(wishlistData);
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Failed to add to wishlist' });
+      }
     });
 
     // Remove from wishlist
@@ -285,32 +440,134 @@ async function run() {
 
     // Add review
     app.post('/api/reviews', verifyJWT, async (req, res) => {
-      const reviewData = { ...req.body, createdAt: new Date().toISOString() };
+      const user = await usersCollection.findOne({ uid: req.tokenUid });
+      const reviewData = { 
+        ...req.body,
+        userId: user._id.toString(),
+        userName: user.name,
+        userEmail: req.tokenEmail,
+        createdAt: new Date().toISOString() 
+      };
       const result = await reviewsCollection.insertOne(reviewData);
+      
+      // Update book's rating and review count
+      const bookId = new ObjectId(req.body.bookId);
+      const allReviews = await reviewsCollection.find({ bookId: req.body.bookId }).toArray();
+      const avgRating = allReviews.reduce((sum, review) => sum + review.rating, 0) / allReviews.length;
+      
+      await booksCollection.updateOne(
+        { _id: bookId },
+        { 
+          $set: { 
+            rating: Math.round(avgRating * 10) / 10, // Round to 1 decimal
+            reviews: allReviews.length 
+          } 
+        }
+      );
+      
       res.send({ success: true, result });
+    });
+
+    // ==================== INVOICE ROUTES ====================
+    
+    // Get user invoices (paid orders)
+    app.get('/api/invoices/:userId', verifyJWT, async (req, res) => {
+      try {
+        const invoices = await ordersCollection.find({ 
+          userId: req.params.userId,
+          paymentStatus: 'paid'
+        }).sort({ paidAt: -1 }).toArray();
+        res.send({ success: true, invoices });
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Failed to fetch invoices' });
+      }
+    });
+
+    // Get single invoice
+    app.get('/api/invoices/detail/:orderId', verifyJWT, async (req, res) => {
+      try {
+        const invoice = await ordersCollection.findOne({ _id: new ObjectId(req.params.orderId) });
+        if (!invoice) return res.status(404).send({ success: false, message: 'Invoice not found' });
+        res.send({ success: true, invoice });
+      } catch (error) {
+        res.status(500).send({ success: false, message: 'Failed to fetch invoice' });
+      }
     });
 
     // ==================== PAYMENT ROUTES ====================
     
-    // Create payment intent
-    app.post('/api/payment/create-intent', verifyJWT, async (req, res) => {
-      const { amount } = req.body;
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100),
-        currency: 'usd',
-        payment_method_types: ['card'],
-      });
-      res.send({ clientSecret: paymentIntent.client_secret });
+    // Create checkout session
+    // Payment endpoint - NO JWT verification (validated by order existence)
+    app.post('/api/create-checkout-session', async (req, res) => {
+      try {
+        const { order } = req.body;
+        
+        // Validate order exists in database
+        const existingOrder = await ordersCollection.findOne({ 
+          _id: new ObjectId(order._id) 
+        });
+        
+        if (!existingOrder) {
+          return res.status(404).json({ message: 'Order not found' });
+        }
+        
+        // Validate email matches
+        if (existingOrder.email !== order.email) {
+          return res.status(403).json({ message: 'Unauthorized' });
+        }
+        
+        const session = await stripe.checkout.sessions.create({
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: order.bookTitle,
+                  description: `Order for ${order.bookTitle}`,
+                  images: [order.bookImage],
+                },
+                unit_amount: Math.round(order.bookPrice * 100),
+              },
+              quantity: 1,
+            },
+          ],
+          customer_email: order.email,
+          mode: 'payment',
+          metadata: {
+            orderId: order._id.toString(),
+            customer: order.email,
+          },
+          success_url: `${process.env.CLIENT_URL || 'http://localhost:5173'}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${process.env.CLIENT_URL || 'http://localhost:5173'}/dashboard/my-orders`,
+        });
+        
+        res.send({ url: session.url });
+      } catch (error) {
+        console.error('Payment error:', error);
+        res.status(500).json({ message: 'Payment failed', error: error.message });
+      }
     });
 
-    // Confirm payment
-    app.post('/api/payment/confirm', verifyJWT, async (req, res) => {
-      const { orderId, paymentIntentId } = req.body;
-      const result = await ordersCollection.updateOne(
-        { _id: new ObjectId(orderId) },
-        { $set: { paymentStatus: 'paid', paymentIntentId, paidAt: new Date().toISOString() } }
-      );
-      res.send({ success: true, result });
+    // Payment success webhook
+    app.post('/api/payment-success', async (req, res) => {
+      const { sessionId } = req.body;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      
+      if (session.status === 'complete') {
+        const result = await ordersCollection.updateOne(
+          { _id: new ObjectId(session.metadata.orderId) },
+          { 
+            $set: { 
+              paymentStatus: 'paid', 
+              transactionId: session.payment_intent,
+              paidAt: new Date().toISOString() 
+            } 
+          }
+        );
+        res.send({ success: true, result });
+      } else {
+        res.status(400).send({ success: false, message: 'Payment not completed' });
+      }
     });
 
     // Root route
@@ -330,9 +587,10 @@ async function run() {
 
 run().catch(console.dir);
 
-// Start server
+app.get('/', (req, res) => {
+  res.send('BookNest Server is running');
+});
+
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on port ${PORT}`);
-  console.log(`📍 API: http://localhost:${PORT}`);
-  console.log(`🌐 Client: ${process.env.CLIENT_URL || 'http://localhost:5173'}\n`);
+  console.log(`Server is running on port ${PORT}`);
 });

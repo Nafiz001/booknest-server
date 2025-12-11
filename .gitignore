@@ -1,6 +1,7 @@
 node_modules/
 .env
-.env.local
+.env.*
+!.env.example
 .DS_Store
 *.log
 npm-debug.log*
@@ -11,3 +12,13 @@ build/
 
 # Firebase Service Account Key (NEVER commit this!)
 config/serviceAccountKey.json
+
+# Vercel
+.vercel
+
+# Temporary files
+*.txt
+test-*.js
+check-*.js
+add-*.js
+*.ps1

@@ -11,9 +11,9 @@ const recreateAdmin = async () => {
     const db = client.db('booknestDB');
     const usersCollection = db.collection('users');
 
-    const adminEmail = 'nafiz@shopcircuit.com';
-    const adminPassword = 'Nafiz@123';
-    const adminName = 'Nafiz Ahmed';
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+    const adminName = process.env.ADMIN_NAME || 'Admin User';
 
     // Delete from MongoDB
     await usersCollection.deleteOne({ email: adminEmail });
